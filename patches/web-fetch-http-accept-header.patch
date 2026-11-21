@@ -1,0 +1,65 @@
+diff --git a/packages/web/web-fetch-http/src/index.ts b/packages/web/web-fetch-http/src/index.ts
+index a5840f8220..a903a44df4 100644
+--- a/packages/web/web-fetch-http/src/index.ts
++++ b/packages/web/web-fetch-http/src/index.ts
+@@ -22,6 +22,13 @@ export type { HttpFetchLimits, HttpFetchResolver } from './provider.ts'
+ /** Default `User-Agent`: an explicit product agent, never a browser disguise. */
+ export const DEFAULT_USER_AGENT = 'deepseek-harness/0.0.1 (+https://github.com/deepseek-ai)'
+ 
++/**
++ * Default `Accept`: a browser-compatible negotiation string. Deliberately avoids
++ * `text/*`-style wildcards and an explicit `application/json` token — several
++ * bot-mitigation front-ends (e.g. hh.ru) reject requests carrying them with 406.
++ */
++export const DEFAULT_ACCEPT_HEADER = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
++
+ /** Cordis plugin name used by loader diagnostics. */
+ export const name = 'web-fetch-http'
+ 
+@@ -40,6 +47,8 @@ export interface Config {
+   maxRedirects?: number
+   /** `User-Agent` header sent on every request. */
+   userAgent?: string
++  /** `Accept` header sent on every request. */
++  acceptHeader?: string
+ }
+ 
+ export const Config: z<Config> = z.object({
+@@ -48,6 +57,7 @@ export const Config: z<Config> = z.object({
+   timeoutMs: z.number().default(30_000),
+   maxRedirects: z.number().default(5),
+   userAgent: z.string().default(DEFAULT_USER_AGENT),
++  acceptHeader: z.string().default(DEFAULT_ACCEPT_HEADER),
+ })
+ 
+ /** Complete config after schemastery applies every field default. */
+@@ -89,6 +99,7 @@ export function apply(ctx: Context, config: Config): void {
+     timeoutMs: resolved.timeoutMs,
+     maxRedirects: resolved.maxRedirects,
+     userAgent: resolved.userAgent,
++    acceptHeader: resolved.acceptHeader,
+   }
+   ctx.web.registerFetchProvider(new HttpFetchProvider(limits))
+ }
+diff --git a/packages/web/web-fetch-http/src/provider.ts b/packages/web/web-fetch-http/src/provider.ts
+index 8f783d4ed7..108290e27d 100644
+--- a/packages/web/web-fetch-http/src/provider.ts
++++ b/packages/web/web-fetch-http/src/provider.ts
+@@ -26,6 +26,8 @@ export interface HttpFetchLimits {
+   maxRedirects: number
+   /** `User-Agent` header sent on every request. */
+   userAgent: string
++  /** `Accept` header sent on every request (browser-compatible negotiation). */
++  acceptHeader: string
+ }
+ 
+ /** Resolve one hostname to an already policy-validated address set. */
+@@ -118,7 +120,7 @@ export class HttpFetchProvider implements WebFetchProvider {
+       const addresses = await this.resolveAddresses(url.hostname, signal)
+       return await publicHttpNetwork.request(url, addresses, {
+         'user-agent': this.limits.userAgent,
+-        'accept': 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8',
++        'accept': this.limits.acceptHeader,
+       }, signal)
+     } catch (error: unknown) {
+       if (error instanceof WebError) throw error
